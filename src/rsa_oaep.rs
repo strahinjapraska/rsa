@@ -3,8 +3,7 @@ use std::ops::BitAnd;
 use crate::{rsa}; 
 use crate::common::*;  
 use crypto_bigint::U3072;
-use crypto_bigint::rand_core::le;
-use crypto_bigint::subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
+use crypto_bigint::subtle::{Choice, ConstantTimeEq};
 use sha2::{Digest, Sha256};
 use rand::RngCore;
 
@@ -13,28 +12,39 @@ pub fn keygen() -> (rsa::RSAPublicKey, rsa::RSAPrivateKey) {
     rsa::keygen()
 }
 
-pub fn enc(pk: &rsa::RSAPublicKey, m: &[u8], l: &[u8]) -> [u8; 384]{
-    assert!((l.len() as u64) <= 2u64.pow(61) - 1);  
+pub fn enc(pk: &rsa::RSAPublicKey, m: &[u8], l: &[u8]) -> Result<[u8; 384], String>{
+    if (l.len() as u64) > 2u64.pow(61) - 1{
+        return Err("label too long".to_string()); 
+    }
 
-    assert!(m.len() <= K - 2*H_LEN - 2); 
+    if m.len() > K - 2*H_LEN - 2 {
+        return Err("message too long".to_string());
+    }
 
     let em = eme_oaep_encode(m, l);  
 
-    let c = rsa::enc(pk, &U3072::from_be_slice(&em)); 
+
+    match rsa::enc(pk, &U3072::from_be_slice(&em)){
+        Ok(c) => return Ok(c.to_be_bytes()),  
+        Err(e) => return Err(e)
+    }
     
-    return c.to_be_bytes(); 
+    
 }
 
-pub fn dec(sk: &rsa::RSAPrivateKey, c: &[u8], l: &[u8]) -> Vec<u8>{
-    assert!((l.len() as u64) <= 2u64.pow(61) - 1);  
-    assert!(c.len() == K);
-    assert!(K > 2*H_LEN + 2);
+pub fn dec(sk: &rsa::RSAPrivateKey, c: &[u8], l: &[u8]) -> Result<Vec<u8>, String>{
+    if (l.len() as u64) > 2u64.pow(61) - 1 || c.len() != K || K < 2*H_LEN + 2{
+        return Err("Decryption failed".to_string())
+    }
 
-    // NOTE: When catching error from plain RSA, handle it properly. 
-    let em = rsa::dec(sk, &U3072::from_be_slice(c)).to_be_bytes(); 
-    let m = eme_oaep_decode(&em, l); 
-
-    return m; 
+    match rsa::dec(sk, &U3072::from_be_slice(c)){
+        Ok(em_integer) => {
+            let em = em_integer.to_be_bytes();
+            return eme_oaep_decode(&em, l); 
+        }, 
+        Err(_) => return Err("Decryption failed".to_string())
+    }
+   
 }
 
 pub fn eme_oaep_encode(m: &[u8], l: &[u8]) -> [u8; K]{
@@ -81,7 +91,7 @@ pub fn eme_oaep_encode(m: &[u8], l: &[u8]) -> [u8; K]{
     return em; 
 }
 
-pub fn eme_oaep_decode(em: &[u8], l: &[u8]) -> Vec<u8>{
+pub fn eme_oaep_decode(em: &[u8], l: &[u8]) -> Result<Vec<u8>, String> {
      let l_hash = if l.len() == 0{
         [
             0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14,
@@ -111,12 +121,12 @@ pub fn eme_oaep_decode(em: &[u8], l: &[u8]) -> Vec<u8>{
 
     let (ok, msg_idx) = is_db_valid(&db, &l_hash, y); 
     if ok.unwrap_u8() == 0u8 {
-        panic!("Decryption error");
+        return Err("Decryption failed.".to_string());
     } 
 
     let m = &db[msg_idx..]; 
 
-    return m.to_vec(); 
+    return Ok(m.to_vec()); 
 
 
 }

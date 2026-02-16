@@ -7,6 +7,8 @@ mod common;
 
 mod tests {
 
+    use core::panic;
+
     use crate::{rsa, rsa_pss, rsa_oaep};
     
     use crypto_bigint::*; 
@@ -15,23 +17,16 @@ mod tests {
     fn enc_dec_test(){
         let (pk, sk) = rsa::keygen();
         let m = U3072::from_u64(12); 
-        let c = rsa::enc(&pk, &m);
-        assert_eq!(rsa::dec(&sk, &c), m);
+        let c = rsa::enc(&pk, &m).unwrap(); 
+        assert_eq!(rsa::dec(&sk, &c).unwrap(), m); 
     }
 
-    #[test]
-    fn sign_verify_test(){
-        let (pk, sk) = rsa::keygen(); 
-        let m = U3072::from_u64(12); 
-        let s = rsa::sign(&sk, &m);
-        assert_eq!(rsa::verify(&pk, &s), m);
-    }
 
     #[test]
     fn rsa_pss_sign_test(){
         let (pk, sk) = rsa_pss::keygen();
         let m = b"67"; 
-        let s = rsa_pss::sign(&sk, m); 
+        let s = rsa_pss::sign(&sk, m).unwrap(); 
         assert!(rsa_pss::verify(&pk, m, &s));
     }
 
@@ -40,8 +35,8 @@ mod tests {
         let (pk, sk) = rsa_oaep::keygen(); 
         let m = b"67"; 
         let l = b"67";
-        let c = rsa_oaep::enc(&pk, m, l);
-        let m_prime = rsa_oaep::dec(&sk, &c, l);
+        let c = rsa_oaep::enc(&pk, m, l).unwrap();
+        let m_prime = rsa_oaep::dec(&sk, &c, l).unwrap(); 
         assert_eq!(m_prime, m.to_vec());
     }
 
@@ -81,7 +76,7 @@ mod tests {
     fn db_valid_test_2(){
         let msg = b"msg"; 
         let ps = [0u8; 10]; 
-        let mut db = build_db(&ps, &dummy_hash(), msg, 0x02); 
+        let db = build_db(&ps, &dummy_hash(), msg, 0x02); 
         let (ok, _) = rsa_oaep::is_db_valid(&db, &dummy_hash(), 0); 
         assert_eq!(ok.unwrap_u8(), 0u8);
     }

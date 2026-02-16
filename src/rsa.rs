@@ -3,8 +3,6 @@ use crypto_bigint::{Odd, U3072, Zero, modular::{MontyForm, MontyParams}};
 
 
 pub struct RSAPrivateKey {
-    p: U3072, 
-    q: U3072, 
     d: U3072, 
     n: U3072,
 }
@@ -22,36 +20,34 @@ pub(crate) fn keygen() -> (RSAPublicKey, RSAPrivateKey) {
     let phi = (p-U3072::ONE)*(q-U3072::ONE); 
     let d = e.inv_mod(&phi).expect("Failed to generate keys"); 
 
-    return (RSAPublicKey{e, n}, RSAPrivateKey{p, q, d, n});
+    return (RSAPublicKey{e, n}, RSAPrivateKey{d, n});
 } 
 
-pub(crate) fn enc(pk: &RSAPublicKey, m: &U3072) -> U3072{
+pub(crate) fn enc(pk: &RSAPublicKey, m: &U3072) -> Result<U3072, String>{
     if m >= &pk.n || m < &U3072::ZERO {
-        panic!("Message representative out of range");
+        Err("message repsresentative out of the range".to_string())
+    }else{
+        Ok(pow_mod(m, &pk.e, &pk.n))
     }
-    pow_mod(m, &pk.e, &pk.n)
 }
-
-pub(crate) fn sign(sk: &RSAPrivateKey, m: &U3072) -> U3072{
-    if m >= &sk.n || m < &U3072::ZERO {
-        panic!("Message representative out of range");
-    }
-    pow_mod(m, &sk.d, &sk.n)
-}
-
-pub fn verify(pk: &RSAPublicKey, s: &U3072) -> U3072{
-    if s >= &pk.n || s < &U3072::ZERO {
-        panic!("Signature representative out of range");
-    }
-    pow_mod(s, &pk.e, &pk.n) 
-}
-
-pub fn dec(sk: &RSAPrivateKey, c: &U3072) -> U3072{
+pub fn dec(sk: &RSAPrivateKey, c: &U3072) -> Result<U3072, String>{
     if c >= &sk.n || c < &U3072::ZERO {
-        panic!("Ciphertext representative out of range");
+        Err("ciphertext representative out of range".to_string())
+    }else{
+        Ok(pow_mod(&c, &sk.d, &sk.n)) 
     }
-    pow_mod(&c, &sk.d, &sk.n)
+    
 } 
+
+pub(crate) fn sign(sk: &RSAPrivateKey, m: &U3072) -> Result<U3072, String>{
+    dec(sk, m)
+}
+
+pub fn verify(pk: &RSAPublicKey, s: &U3072) -> Result<U3072, String>{
+    enc(pk, s)
+}
+
+
 
 fn pow_mod(base: &U3072, exponent: &U3072, modulus: &U3072) -> U3072{
     let n = Odd::new(*modulus).expect("Invalid modulus");

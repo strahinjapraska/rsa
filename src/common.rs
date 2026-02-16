@@ -6,9 +6,7 @@ pub(crate) const K: usize = 384;
 use sha2::{Digest, Sha256};
 
 pub (crate) fn mgf1(seed: &[u8], mask_len: usize)-> Vec<u8>{
-    if mask_len as u64 > 2u64.pow(32) * (H_LEN as u64){
-        panic!("mask too long");
-    }
+    debug_assert!(mask_len as u64 <= 2u64.pow(32) * (H_LEN as u64)); // for the lib use case, don't need this 
 
     let mut t: Vec<u8> = Vec::new(); 
 

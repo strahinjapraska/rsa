@@ -11,11 +11,21 @@ pub fn keygen() -> (rsa::RSAPublicKey, rsa::RSAPrivateKey) {
     rsa::keygen()
 }
 
-pub fn sign(sk: &RSAPrivateKey, m: &[u8]) -> [u8; 384]{
+pub fn sign(sk: &RSAPrivateKey, m: &[u8]) -> Result<[u8; 384], String>{
     let em = emsa_pss_encode(m); 
-    let m = U3072::from_be_slice(&em);  
-    let s = rsa::sign(sk, &m);  
-    return s.to_be_bytes();
+    match emsa_pss_encode(m){
+        Ok(em) => {
+            let m = U3072::from_be_slice(&em);   
+            match rsa::sign(sk, &m){
+                Ok(s) => {
+                    return Ok(s.to_be_bytes()) 
+                }, 
+                Err(e) => return Err(e) 
+            }
+        } 
+        Err(e) => return Err(e)
+    }
+   
 }
 
 pub fn verify(pk: &rsa::RSAPublicKey, m: &[u8], s: &[u8]) -> bool{
@@ -23,17 +33,24 @@ pub fn verify(pk: &rsa::RSAPublicKey, m: &[u8], s: &[u8]) -> bool{
         return false; 
     }
     let s = U3072::from_be_slice(s);
-    let m_prime = rsa::verify(pk, &s); 
-    let em = m_prime.to_be_bytes();
-    emsa_pss_verify(m, &em)
+    match rsa::verify(pk, &s){
+        Ok(m_prime) => {
+            emsa_pss_verify(m, &m_prime.to_be_bytes())
+        }
+        Err(_) => return false 
+    }
 }
 
-fn emsa_pss_encode(m: &[u8]) -> [u8; EM_LEN]{
-    assert!((m.len() as u64) <= 2u64.pow(61) - 1); 
+fn emsa_pss_encode(m: &[u8]) -> Result<[u8; EM_LEN], String>{
+    if (m.len() as u64) > 2u64.pow(61) - 1{
+        return Err("message too long".to_string())
+    }
 
     let m_hash = Sha256::digest(m); 
 
-    assert!(EM_LEN >= H_LEN + SALT_LEN + 2); 
+    if EM_LEN < H_LEN + SALT_LEN + 2{
+        return Err("encoding error".to_string())
+    }
 
     let mut salt = [0u8; SALT_LEN]; 
     rand::rng().fill_bytes(&mut salt);
@@ -66,16 +83,20 @@ fn emsa_pss_encode(m: &[u8]) -> [u8; EM_LEN]{
     em[db_mask.len()..EM_LEN -1].copy_from_slice(h.as_slice());
     em[EM_LEN - 1] = 0xBC;
 
-    em 
+    Ok(em)
 
 }
 
 fn emsa_pss_verify(m: &[u8], em: &[u8]) -> bool{
-    assert!((m.len() as u64) <= 2u64.pow(61) - 1); 
+    if (m.len() as u64) > 2u64.pow(61) - 1 {
+        return false; 
+    }
 
     let m_hash = Sha256::digest(m); 
 
-    assert!(EM_LEN >= H_LEN + SALT_LEN + 2); 
+    if EM_LEN < H_LEN + SALT_LEN + 2{
+        return false; 
+    }
 
     if em[EM_LEN - 1] != 0xBC {
         return false; 
